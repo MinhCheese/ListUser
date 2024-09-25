@@ -3,7 +3,6 @@ import {
   View, 
   Text, 
   TextInput, 
-  Button, 
   FlatList, 
   ActivityIndicator, 
   StyleSheet, 
@@ -12,7 +11,6 @@ import {
 import { collection, onSnapshot, addDoc, deleteDoc, doc, updateDoc } from 'firebase/firestore'; 
 import { firestore } from '../firebaseConfig';
 
-// Định nghĩa kiểu dữ liệu cho người dùng
 interface User {
   id: string;
   name: string;
@@ -24,13 +22,10 @@ const App = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [loadingAction, setLoadingAction] = useState<boolean>(false);
-  const [name, setName] = useState<string>('');
-  const [email, setEmail] = useState<string>('');
-  const [age, setAge] = useState<number | string>(''); 
-  const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
   const [searchText, setSearchText] = useState<string>('');
   const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null); // Biến trạng thái để hiển thị lỗi
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(firestore, 'users'), (snapshot) => {
@@ -49,7 +44,6 @@ const App = () => {
     return () => unsubscribe(); 
   }, []);
 
-  // Tìm kiếm danh sách người dùng
   useEffect(() => {
     if (searchText) {
       const filtered = users.filter(user => 
@@ -62,88 +56,11 @@ const App = () => {
     }
   }, [searchText, users]);
 
-  const validateInputs = (): boolean => {
-    if (!name) {
-      setErrorMessage('Name is required.');
-      return false;
-    }
-
-    if (name.length < 3) {
-      setErrorMessage('Name should be at least 3 characters long.');
-      return false;
-    }
-
-    if (!email) {
-      setErrorMessage('Email is required.');
-      return false;
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      setErrorMessage('Please enter a valid email address.');
-      return false;
-    }
-
-    if (!age) {
-      setErrorMessage('Age is required.');
-      return false;
-    }
-
-    const ageNumber = Number(age);
-    if (isNaN(ageNumber) || ageNumber <= 0 || ageNumber > 120) {
-      setErrorMessage('Please enter a valid age between 1 and 120.');
-      return false;
-    }
-
-    setErrorMessage(null); // Xóa lỗi nếu tất cả các trường đều hợp lệ
-    return true;
-  };
-
-  const addUser = async () => {
-    if (!validateInputs()) return;
-
-    setLoadingAction(true);
-    try {
-      await addDoc(collection(firestore, 'users'), {
-        name,
-        email,
-        age: Number(age),
-      });
-      resetForm();
-    } catch (error:any) {
-      setErrorMessage('Error adding user: ' + error.message);
-      console.error('Error adding user: ', error);
-    } finally {
-      setLoadingAction(false);
-    }
-  };
-
-  const editUser = async () => {
-    if (!validateInputs()) return;
-
-    if (editingUserId) {
-      setLoadingAction(true);
-      try {
-        await updateDoc(doc(firestore, 'users', editingUserId), {
-          name,
-          email,
-          age: Number(age),
-        });
-        resetForm();
-      } catch (error:any) {
-        setErrorMessage('Error updating user: ' + error.message);
-        console.error('Error updating user: ', error);
-      } finally {
-        setLoadingAction(false);
-      }
-    }
-  };
-
   const deleteUser = async (userId: string) => {
     setLoadingAction(true);
     try {
       await deleteDoc(doc(firestore, 'users', userId));
-    } catch (error:any) {
+    } catch (error: any) {
       setErrorMessage('Error deleting user: ' + error.message);
       console.error('Error deleting user: ', error);
     } finally {
@@ -151,19 +68,9 @@ const App = () => {
     }
   };
 
-  const resetForm = () => {
-    setName('');
-    setEmail('');
-    setAge('');
-    setEditingUserId(null);
+  const resetEditing = () => {
+    setEditingUser(null);
     setErrorMessage(null);
-  };
-
-  const startEditUser = (user: User) => {
-    setName(user.name);
-    setEmail(user.email);
-    setAge(user.age.toString());
-    setEditingUserId(user.id);
   };
 
   if (loading) {
@@ -174,10 +81,8 @@ const App = () => {
     <View style={styles.container}>
       <Text style={styles.title}>User Management</Text>
 
-      {/* Hiển thị lỗi nếu có */}
       {errorMessage && <Text style={styles.errorText}>{errorMessage}</Text>}
 
-      {/* Thanh tìm kiếm */}
       <TextInput
         placeholder="Search users..."
         value={searchText}
@@ -185,34 +90,20 @@ const App = () => {
         style={styles.input}
       />
 
-      {/* Các trường nhập liệu */}
-      <TextInput 
-        placeholder="Name" 
-        value={name} 
-        onChangeText={setName} 
-        style={styles.input} 
-      />
-      <TextInput 
-        placeholder="Email" 
-        value={email} 
-        onChangeText={setEmail} 
-        style={styles.input} 
-        keyboardType="email-address" 
-        autoCapitalize="none" 
-      />
-      <TextInput 
-        placeholder="Age" 
-        value={age.toString()} 
-        onChangeText={setAge} 
-        keyboardType="numeric" 
-        style={styles.input} 
-      />
+      {!editingUser && (
+        <AddUserForm 
+          onAddComplete={resetEditing} 
+          setErrorMessage={setErrorMessage}
+        />
+      )}
 
-      <Button 
-        title={editingUserId ? "Update User" : "Add User"} 
-        onPress={editingUserId ? editUser : addUser} 
-        color="#4CAF50" 
-      />
+      {editingUser && (
+        <EditUserForm 
+          user={editingUser} 
+          onEditComplete={resetEditing} 
+          setErrorMessage={setErrorMessage}
+        />
+      )}
 
       {loadingAction && <ActivityIndicator style={styles.loading} />}
 
@@ -227,16 +118,17 @@ const App = () => {
             </View>
             <View style={styles.buttonContainer}>
               <TouchableOpacity 
-                style={[styles.button, styles.editButton]} 
-                onPress={() => startEditUser(item)}
+                style={styles.iconButton} 
+                onPress={() => setEditingUser(item)}
               >
-                <Text style={styles.buttonText}>Edit</Text>
+                <Text style={styles.iconText}>✏️</Text>
               </TouchableOpacity>
+
               <TouchableOpacity 
-                style={[styles.button, styles.deleteButton]} 
+                style={styles.iconButton} 
                 onPress={() => deleteUser(item.id)}
               >
-                <Text style={styles.buttonText}>Delete</Text>
+                <Text style={styles.iconText}>❌</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -247,89 +139,219 @@ const App = () => {
   );
 };
 
+const AddUserForm = ({ onAddComplete, setErrorMessage }: { onAddComplete: () => void; setErrorMessage: (msg: string | null) => void; }) => {
+  const [name, setName] = useState<string>('');
+  const [email, setEmail] = useState<string>('');
+  const [age, setAge] = useState<number | string>(''); 
+
+  const validateInputs = (): boolean => {
+    if (!name) {
+      setErrorMessage('Name is required.');
+      return false;
+    }
+    if (!email) {
+      setErrorMessage('Email is required.');
+      return false;
+    }
+    if (!age || isNaN(Number(age)) || Number(age) <= 0) {
+      setErrorMessage('Valid age is required.');
+      return false;
+    }
+    setErrorMessage(null); 
+    return true;
+  };
+
+  const addUser = async () => {
+    if (!validateInputs()) return;
+    try {
+      await addDoc(collection(firestore, 'users'), { name, email, age: Number(age) });
+      onAddComplete();
+      setName('');  // Reset input
+      setEmail(''); // Reset input
+      setAge('');   // Reset input
+    } catch (error: any) {
+      setErrorMessage('Error adding user: ' + error.message);
+      console.error('Error adding user: ', error);
+    }
+  };
+
+  return (
+    <View style={styles.formContainer}>
+      <TextInput 
+        placeholder="Name" 
+        value={name} 
+        onChangeText={setName} 
+        style={styles.input} 
+      />
+      <TextInput 
+        placeholder="Email" 
+        value={email} 
+        onChangeText={setEmail} 
+        style={styles.input} 
+      />
+      <TextInput 
+        placeholder="Age" 
+        value={age.toString()} 
+        onChangeText={setAge} 
+        keyboardType="numeric"
+        style={styles.input} 
+      />
+      <TouchableOpacity 
+        style={[styles.button, styles.addButton]} 
+        onPress={addUser}
+      >
+        <Text style={styles.iconText}>➕</Text>
+        <Text style={styles.buttonText}>Add User</Text>
+      </TouchableOpacity>
+    </View>
+  );
+};
+
+const EditUserForm = ({ user, onEditComplete, setErrorMessage }: { user: User; onEditComplete: () => void; setErrorMessage: (msg: string | null) => void; }) => {
+  const [name, setName] = useState<string>(user.name);
+  const [email, setEmail] = useState<string>(user.email);
+  const [age, setAge] = useState<number | string>(user.age);
+
+  const validateInputs = (): boolean => {
+    if (!name) {
+      setErrorMessage('Name is required.');
+      return false;
+    }
+    if (!email) {
+      setErrorMessage('Email is required.');
+      return false;
+    }
+    if (!age || isNaN(Number(age)) || Number(age) <= 0) {
+      setErrorMessage('Valid age is required.');
+      return false;
+    }
+    setErrorMessage(null); 
+    return true;
+  };
+
+  const editUser = async () => {
+    if (!validateInputs()) return;
+
+    try {
+      await updateDoc(doc(firestore, 'users', user.id), { name, email, age: Number(age) });
+      onEditComplete();
+    } catch (error: any) {
+      setErrorMessage('Error updating user: ' + error.message);
+      console.error('Error updating user: ', error);
+    }
+  };
+
+  return (
+    <View style={styles.formContainer}>
+      <TextInput 
+        placeholder="Name" 
+        value={name} 
+        onChangeText={setName} 
+        style={styles.input} 
+      />
+      <TextInput 
+        placeholder="Email" 
+        value={email} 
+        onChangeText={setEmail} 
+        style={styles.input} 
+      />
+      <TextInput 
+        placeholder="Age" 
+        value={age.toString()} 
+        onChangeText={setAge} 
+        keyboardType="numeric"
+        style={styles.input} 
+      />
+      <TouchableOpacity 
+        style={[styles.button, styles.editButton]} 
+        onPress={editUser}
+      >
+        <Text style={styles.iconText}>✏️</Text>
+        <Text style={styles.buttonText}>Update User</Text>
+      </TouchableOpacity>
+    </View>
+  );
+};
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 20,
-    backgroundColor: '#f0f4f8',
+    backgroundColor: '#e3f2fd', // Màu nền xanh nhạt
   },
   title: {
-    fontSize: 28,
+    fontSize: 30,
     fontWeight: 'bold',
     marginBottom: 20,
     textAlign: 'center',
-    color: '#333',
+    color: '#1e88e5', // Màu chữ xanh đậm
   },
   input: {
-    height: 50,
-    borderColor: '#ddd',
     borderWidth: 1,
-    marginBottom: 15,
-    paddingHorizontal: 15,
-    borderRadius: 8,
+    borderColor: '#90caf9', // Màu viền input
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 12,
     backgroundColor: '#fff',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 3,
+    fontSize: 16,
+    color: '#424242',
+  },
+  button: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    borderRadius: 10,
+    marginVertical: 8,
+  },
+  addButton: {
+    backgroundColor: '#28a745',
+  },
+  editButton: {
+    backgroundColor: '#007bff',
+  },
+  buttonText: {
+    color: '#fff',
+    fontSize: 18,
+    marginLeft: 10,
+  },
+  iconText: {
+    fontSize: 20,
   },
   userItem: {
-    padding: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#ddd',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    padding: 15,
+    borderBottomWidth: 1,
+    borderColor: '#90caf9', // Màu viền danh sách
     backgroundColor: '#fff',
-    borderRadius: 8,
     marginBottom: 10,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 3,
+    borderRadius: 10,
   },
   userInfo: {
     flex: 1,
-    marginRight: 10,
   },
   userText: {
     fontSize: 16,
-    color: '#333',
+    color: '#343a40',
   },
   buttonContainer: {
     flexDirection: 'row',
   },
-  button: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 5,
-    marginLeft: 5,
-  },
-  editButton: {
-    backgroundColor: '#4CAF50',
-  },
-  deleteButton: {
-    backgroundColor: '#F44336',
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 14,
-  },
-  errorText: {
-    color: 'red',
-    marginBottom: 10,
-    textAlign: 'center',
+  iconButton: {
+    marginLeft: 10,
+    padding: 10,
   },
   loading: {
     marginTop: 20,
+  },
+  errorText: {
+    color: 'red',
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  formContainer: {
+    marginBottom: 20,
   },
 });
 
