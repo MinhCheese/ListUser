@@ -7,7 +7,6 @@ import {
   FlatList, 
   ActivityIndicator, 
   StyleSheet, 
-  Alert, 
   TouchableOpacity 
 } from 'react-native';
 import { collection, onSnapshot, addDoc, deleteDoc, doc, updateDoc } from 'firebase/firestore'; 
@@ -25,13 +24,13 @@ const App = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [loadingAction, setLoadingAction] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState<string>('');
   const [email, setEmail] = useState<string>('');
   const [age, setAge] = useState<number | string>(''); 
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
-  const [searchText, setSearchText] = useState<string>(''); // Thêm biến searchText
-  const [filteredUsers, setFilteredUsers] = useState<User[]>([]); // Thêm biến filteredUsers
+  const [searchText, setSearchText] = useState<string>('');
+  const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null); // Biến trạng thái để hiển thị lỗi
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(firestore, 'users'), (snapshot) => {
@@ -40,11 +39,10 @@ const App = () => {
         usersList.push({ ...doc.data(), id: doc.id } as User);
       });
       setUsers(usersList);
-      setFilteredUsers(usersList); // Cập nhật filteredUsers ban đầu là toàn bộ danh sách
+      setFilteredUsers(usersList);
       setLoading(false);
     }, (error) => {
       setLoading(false);
-      setError(error.message);
       console.error('Error fetching users: ', error);
     });
 
@@ -60,28 +58,84 @@ const App = () => {
       );
       setFilteredUsers(filtered);
     } else {
-      setFilteredUsers(users); // Khi không có từ khóa tìm kiếm, hiển thị toàn bộ danh sách
+      setFilteredUsers(users);
     }
   }, [searchText, users]);
 
+  const validateInputs = (): boolean => {
+    if (!name) {
+      setErrorMessage('Name is required.');
+      return false;
+    }
+
+    if (name.length < 3) {
+      setErrorMessage('Name should be at least 3 characters long.');
+      return false;
+    }
+
+    if (!email) {
+      setErrorMessage('Email is required.');
+      return false;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setErrorMessage('Please enter a valid email address.');
+      return false;
+    }
+
+    if (!age) {
+      setErrorMessage('Age is required.');
+      return false;
+    }
+
+    const ageNumber = Number(age);
+    if (isNaN(ageNumber) || ageNumber <= 0 || ageNumber > 120) {
+      setErrorMessage('Please enter a valid age between 1 and 120.');
+      return false;
+    }
+
+    setErrorMessage(null); // Xóa lỗi nếu tất cả các trường đều hợp lệ
+    return true;
+  };
+
   const addUser = async () => {
-    if (name && email && age) { 
+    if (!validateInputs()) return;
+
+    setLoadingAction(true);
+    try {
+      await addDoc(collection(firestore, 'users'), {
+        name,
+        email,
+        age: Number(age),
+      });
+      resetForm();
+    } catch (error:any) {
+      setErrorMessage('Error adding user: ' + error.message);
+      console.error('Error adding user: ', error);
+    } finally {
+      setLoadingAction(false);
+    }
+  };
+
+  const editUser = async () => {
+    if (!validateInputs()) return;
+
+    if (editingUserId) {
       setLoadingAction(true);
       try {
-        await addDoc(collection(firestore, 'users'), {
+        await updateDoc(doc(firestore, 'users', editingUserId), {
           name,
           email,
-          age: Number(age), 
+          age: Number(age),
         });
         resetForm();
       } catch (error:any) {
-        setError(error.message);
-        console.error('Error adding user: ', error);
+        setErrorMessage('Error updating user: ' + error.message);
+        console.error('Error updating user: ', error);
       } finally {
         setLoadingAction(false);
       }
-    } else {
-      Alert.alert("Validation Error", "Please fill in all fields.");
     }
   };
 
@@ -90,31 +144,10 @@ const App = () => {
     try {
       await deleteDoc(doc(firestore, 'users', userId));
     } catch (error:any) {
-      setError(error.message);
+      setErrorMessage('Error deleting user: ' + error.message);
       console.error('Error deleting user: ', error);
     } finally {
       setLoadingAction(false);
-    }
-  };
-
-  const editUser = async () => {
-    if (editingUserId && name && email && age) {
-      setLoadingAction(true);
-      try {
-        await updateDoc(doc(firestore, 'users', editingUserId), {
-          name,
-          email,
-          age: Number(age), 
-        });
-        resetForm();
-      } catch (error:any) {
-        setError(error.message);
-        console.error('Error updating user: ', error);
-      } finally {
-        setLoadingAction(false);
-      }
-    } else {
-      Alert.alert("Validation Error", "Please fill in all fields.");
     }
   };
 
@@ -123,6 +156,7 @@ const App = () => {
     setEmail('');
     setAge('');
     setEditingUserId(null);
+    setErrorMessage(null);
   };
 
   const startEditUser = (user: User) => {
@@ -140,6 +174,9 @@ const App = () => {
     <View style={styles.container}>
       <Text style={styles.title}>User Management</Text>
 
+      {/* Hiển thị lỗi nếu có */}
+      {errorMessage && <Text style={styles.errorText}>{errorMessage}</Text>}
+
       {/* Thanh tìm kiếm */}
       <TextInput
         placeholder="Search users..."
@@ -148,6 +185,7 @@ const App = () => {
         style={styles.input}
       />
 
+      {/* Các trường nhập liệu */}
       <TextInput 
         placeholder="Name" 
         value={name} 
@@ -169,6 +207,7 @@ const App = () => {
         keyboardType="numeric" 
         style={styles.input} 
       />
+
       <Button 
         title={editingUserId ? "Update User" : "Add User"} 
         onPress={editingUserId ? editUser : addUser} 
@@ -177,17 +216,15 @@ const App = () => {
 
       {loadingAction && <ActivityIndicator style={styles.loading} />}
 
-      {error && (
-        <Text style={styles.errorText}>{error}</Text>
-      )}
-
       <FlatList
-        data={filteredUsers} // Hiển thị danh sách người dùng đã được lọc
+        data={filteredUsers}
         renderItem={({ item }) => (
           <View style={styles.userItem}>
-            <Text style={styles.userText}>
-              {item.name} - {item.email} - {item.age} years old
-            </Text>
+            <View style={styles.userInfo}>
+              <Text style={styles.userText}>
+                {item.name} - {item.email} - {item.age} years old
+              </Text>
+            </View>
             <View style={styles.buttonContainer}>
               <TouchableOpacity 
                 style={[styles.button, styles.editButton]} 
@@ -257,19 +294,22 @@ const styles = StyleSheet.create({
     },
     shadowOpacity: 0.1,
     shadowRadius: 2,
-    elevation: 2,
+    elevation: 3,
+  },
+  userInfo: {
+    flex: 1,
+    marginRight: 10,
   },
   userText: {
     fontSize: 16,
-    color: '#555',
-    flex: 1,
+    color: '#333',
   },
   buttonContainer: {
     flexDirection: 'row',
   },
   button: {
-    paddingVertical: 10,
-    paddingHorizontal: 15,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     borderRadius: 5,
     marginLeft: 5,
   },
@@ -277,19 +317,19 @@ const styles = StyleSheet.create({
     backgroundColor: '#4CAF50',
   },
   deleteButton: {
-    backgroundColor: '#f44336',
+    backgroundColor: '#F44336',
   },
   buttonText: {
     color: '#fff',
-    fontWeight: 'bold',
-  },
-  loading: {
-    marginTop: 50,
+    fontSize: 14,
   },
   errorText: {
     color: 'red',
+    marginBottom: 10,
     textAlign: 'center',
-    marginVertical: 10,
+  },
+  loading: {
+    marginTop: 20,
   },
 });
 
