@@ -1,70 +1,296 @@
-import { Image, StyleSheet, Platform } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { 
+  View, 
+  Text, 
+  TextInput, 
+  Button, 
+  FlatList, 
+  ActivityIndicator, 
+  StyleSheet, 
+  Alert, 
+  TouchableOpacity 
+} from 'react-native';
+import { collection, onSnapshot, addDoc, deleteDoc, doc, updateDoc } from 'firebase/firestore'; 
+import { firestore } from '../firebaseConfig';
 
-import { HelloWave } from '@/components/HelloWave';
-import ParallaxScrollView from '@/components/ParallaxScrollView';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
-
-export default function HomeScreen() {
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({ ios: 'cmd + d', android: 'cmd + m' })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-        <ThemedText>
-          Tap the Explore tab to learn more about what's included in this starter app.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          When you're ready, run{' '}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
-  );
+// Định nghĩa kiểu dữ liệu cho người dùng
+interface User {
+  id: string;
+  name: string;
+  email: string;
+  age: number;
 }
 
+const App = () => {
+  const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [loadingAction, setLoadingAction] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [name, setName] = useState<string>('');
+  const [email, setEmail] = useState<string>('');
+  const [age, setAge] = useState<number | string>(''); 
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [searchText, setSearchText] = useState<string>(''); // Thêm biến searchText
+  const [filteredUsers, setFilteredUsers] = useState<User[]>([]); // Thêm biến filteredUsers
+
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(firestore, 'users'), (snapshot) => {
+      const usersList: User[] = [];
+      snapshot.forEach((doc) => {
+        usersList.push({ ...doc.data(), id: doc.id } as User);
+      });
+      setUsers(usersList);
+      setFilteredUsers(usersList); // Cập nhật filteredUsers ban đầu là toàn bộ danh sách
+      setLoading(false);
+    }, (error) => {
+      setLoading(false);
+      setError(error.message);
+      console.error('Error fetching users: ', error);
+    });
+
+    return () => unsubscribe(); 
+  }, []);
+
+  // Tìm kiếm danh sách người dùng
+  useEffect(() => {
+    if (searchText) {
+      const filtered = users.filter(user => 
+        user.name.toLowerCase().includes(searchText.toLowerCase()) || 
+        user.email.toLowerCase().includes(searchText.toLowerCase())
+      );
+      setFilteredUsers(filtered);
+    } else {
+      setFilteredUsers(users); // Khi không có từ khóa tìm kiếm, hiển thị toàn bộ danh sách
+    }
+  }, [searchText, users]);
+
+  const addUser = async () => {
+    if (name && email && age) { 
+      setLoadingAction(true);
+      try {
+        await addDoc(collection(firestore, 'users'), {
+          name,
+          email,
+          age: Number(age), 
+        });
+        resetForm();
+      } catch (error:any) {
+        setError(error.message);
+        console.error('Error adding user: ', error);
+      } finally {
+        setLoadingAction(false);
+      }
+    } else {
+      Alert.alert("Validation Error", "Please fill in all fields.");
+    }
+  };
+
+  const deleteUser = async (userId: string) => {
+    setLoadingAction(true);
+    try {
+      await deleteDoc(doc(firestore, 'users', userId));
+    } catch (error:any) {
+      setError(error.message);
+      console.error('Error deleting user: ', error);
+    } finally {
+      setLoadingAction(false);
+    }
+  };
+
+  const editUser = async () => {
+    if (editingUserId && name && email && age) {
+      setLoadingAction(true);
+      try {
+        await updateDoc(doc(firestore, 'users', editingUserId), {
+          name,
+          email,
+          age: Number(age), 
+        });
+        resetForm();
+      } catch (error:any) {
+        setError(error.message);
+        console.error('Error updating user: ', error);
+      } finally {
+        setLoadingAction(false);
+      }
+    } else {
+      Alert.alert("Validation Error", "Please fill in all fields.");
+    }
+  };
+
+  const resetForm = () => {
+    setName('');
+    setEmail('');
+    setAge('');
+    setEditingUserId(null);
+  };
+
+  const startEditUser = (user: User) => {
+    setName(user.name);
+    setEmail(user.email);
+    setAge(user.age.toString());
+    setEditingUserId(user.id);
+  };
+
+  if (loading) {
+    return <ActivityIndicator style={styles.loading} />;
+  }
+
+  return (
+    <View style={styles.container}>
+      <Text style={styles.title}>User Management</Text>
+
+      {/* Thanh tìm kiếm */}
+      <TextInput
+        placeholder="Search users..."
+        value={searchText}
+        onChangeText={setSearchText}
+        style={styles.input}
+      />
+
+      <TextInput 
+        placeholder="Name" 
+        value={name} 
+        onChangeText={setName} 
+        style={styles.input} 
+      />
+      <TextInput 
+        placeholder="Email" 
+        value={email} 
+        onChangeText={setEmail} 
+        style={styles.input} 
+        keyboardType="email-address" 
+        autoCapitalize="none" 
+      />
+      <TextInput 
+        placeholder="Age" 
+        value={age.toString()} 
+        onChangeText={setAge} 
+        keyboardType="numeric" 
+        style={styles.input} 
+      />
+      <Button 
+        title={editingUserId ? "Update User" : "Add User"} 
+        onPress={editingUserId ? editUser : addUser} 
+        color="#4CAF50" 
+      />
+
+      {loadingAction && <ActivityIndicator style={styles.loading} />}
+
+      {error && (
+        <Text style={styles.errorText}>{error}</Text>
+      )}
+
+      <FlatList
+        data={filteredUsers} // Hiển thị danh sách người dùng đã được lọc
+        renderItem={({ item }) => (
+          <View style={styles.userItem}>
+            <Text style={styles.userText}>
+              {item.name} - {item.email} - {item.age} years old
+            </Text>
+            <View style={styles.buttonContainer}>
+              <TouchableOpacity 
+                style={[styles.button, styles.editButton]} 
+                onPress={() => startEditUser(item)}
+              >
+                <Text style={styles.buttonText}>Edit</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.button, styles.deleteButton]} 
+                onPress={() => deleteUser(item.id)}
+              >
+                <Text style={styles.buttonText}>Delete</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+        keyExtractor={(item) => item.id} 
+      />
+    </View>
+  );
+};
+
 const styles = StyleSheet.create({
-  titleContainer: {
+  container: {
+    flex: 1,
+    padding: 20,
+    backgroundColor: '#f0f4f8',
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    marginBottom: 20,
+    textAlign: 'center',
+    color: '#333',
+  },
+  input: {
+    height: 50,
+    borderColor: '#ddd',
+    borderWidth: 1,
+    marginBottom: 15,
+    paddingHorizontal: 15,
+    borderRadius: 8,
+    backgroundColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 3,
+  },
+  userItem: {
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#ddd',
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 8,
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    marginBottom: 10,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  userText: {
+    fontSize: 16,
+    color: '#555',
+    flex: 1,
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  buttonContainer: {
+    flexDirection: 'row',
+  },
+  button: {
+    paddingVertical: 10,
+    paddingHorizontal: 15,
+    borderRadius: 5,
+    marginLeft: 5,
+  },
+  editButton: {
+    backgroundColor: '#4CAF50',
+  },
+  deleteButton: {
+    backgroundColor: '#f44336',
+  },
+  buttonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+  loading: {
+    marginTop: 50,
+  },
+  errorText: {
+    color: 'red',
+    textAlign: 'center',
+    marginVertical: 10,
   },
 });
+
+export default App;
